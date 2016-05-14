@@ -1,0 +1,7 @@
+*.swp
+*.o
+*.o.d
+champion.tgz
+maps/
+stechecCfg/*
+champion.so
