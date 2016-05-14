@@ -27,9 +27,9 @@ double pipe_ownership(const position& pos) {
 }
 	
 
-int posCost(const position& p) {
+int posCost(const position& p, bool backboneMode) {
 	switch(type_case(p)) {
-		case VIDE: return 1;
+		case VIDE: return (backboneMode)?0:1;
 		case TUYAU: return 0;
 		case SUPER_TUYAU: return 0;
 		case DEBRIS: return 2;
@@ -45,7 +45,7 @@ position addAdj(const position& p, int i) {
 }
 
 std::pair<Path,int> shortpath(
-	const position& target, const SPos& from)
+	const position& target, const SPos& from, bool newBackbone)
 {
 	int seen[TAILLE_TERRAIN][TAILLE_TERRAIN];
 	for(int row=0; row < TAILLE_TERRAIN; row++) {
@@ -76,9 +76,10 @@ std::pair<Path,int> shortpath(
 
 		for(int i=0; i < NB_ADJACENCY; i++) {
 			position nPos = cElt.pos + ADJACENCY[i];
-			if(posCost(nPos) == INFTY)
+			if(posCost(nPos, newBackbone) == INFTY)
 				continue;
-			int nCost = -cElt.depth + 1 + posCost(nPos);
+			int nCost = -cElt.depth + 1 +
+				posCost(nPos,newBackbone);
 			process.push(BfsElem(nPos, -nCost));
 		}	
 	}
@@ -162,15 +163,78 @@ set<position> setOfVect(const vector<position>& v) {
 	return out;
 }
 
-std::vector<position> liste_base_baies() {
+position bayOfBase(position pos) {
+	if(type_case(pos) != BASE)
+		return mkPos(-1,-1);
+	
+	for(int adj=0; adj < NB_ADJACENCY; adj++) {
+		position nPos = pos + ADJACENCY[adj];
+		if(buildable(nPos))
+			return nPos;
+	}
+	return mkPos(-1,-1);
+}
+
+std::vector<position> liste_base(bool adv) {
+	if(adv)
+		return base_ennemie();
+	return ma_base();
+}
+
+std::vector<position> liste_base_baies(bool adv) {
 	std::vector<position> baies, base = ma_base();
+	if(adv)
+		base = base_ennemie();
 	for(auto it=base.begin(); it != base.end(); ++it) {
-		for(int adj=0; adj < NB_ADJACENCY; adj++) {
-			position nPos = *it + ADJACENCY[adj];
-			if(buildable(nPos))
-				baies.push_back(nPos);
-		}
+		baies.push_back(bayOfBase(*it));
 	}
 	return baies;
+}
+
+int distToBase(position pos, bool adv) {
+	queue<BfsElem> process;
+	int dists[TAILLE_TERRAIN][TAILLE_TERRAIN];
+	for(int row=0; row < TAILLE_TERRAIN; row++)
+		for(int col=0; col < TAILLE_TERRAIN; col++)
+			dists[row][col]=-1;
+	process.push(BfsElem(pos,0));
+
+	while(!process.empty()) {
+		BfsElem cElt = process.front();
+		position& cPos = cElt.pos;
+		process.pop();
+		if(dists[cPos.y][cPos.x] >= 0)
+			continue;
+		dists[cPos.y][cPos.x] = cElt.depth;
+
+		for(int adj=0; adj < NB_ADJACENCY; adj++) {
+			position nPos = cPos + ADJACENCY[adj];
+			if(!buildable(nPos) || !est_tuyau(nPos))
+				continue;
+			process.push(BfsElem(nPos, cElt.depth+1));
+		}
+	}
+
+	vector<position> baies = liste_base(adv);
+	int minDist = INFTY;
+	for(auto it=baies.begin(); it != baies.end(); ++it) {
+		position baie = bayOfBase(*it);
+		int dist = dists[baie.y][baie.x] -
+			puissance_aspiration(*it);
+		minDist = min(minDist, dist);
+	}
+	return minDist;
+}
+
+int countActionPoints(Path pth) {
+	int ap=0;
+	for(auto it=pth.begin(); it != pth.end(); ++it) {
+		switch(type_case(*it)) {
+			case VIDE: ap +=1 ; break;
+			case DEBRIS: ap += 3; break;
+			default: break;
+		}
+	}
+	return ap;
 }
 

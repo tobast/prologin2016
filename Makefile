@@ -7,11 +7,13 @@ lib_TARGETS = champion
 champion-srcs = prologin.cc \
 	naive.cpp \
 	greedy.cpp \
-	overlay.cpp 
+	overlay.cpp \
+	stats.cpp
 champion-dists = naive.h \
 	greedy.cpp \
 	overlay.h \
 	greedy.h \
+	stats.h \
 	constants.h
 champion-cxxflags = -ggdb3 -Wall -Wextra -std=c++11
 

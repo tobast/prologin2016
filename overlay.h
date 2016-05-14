@@ -13,6 +13,10 @@ typedef std::set<position> SPos;
 
 const int INFTY = 1<<16;
 
+inline double sq(double x) {
+	return x*x;
+}
+
 inline position operator+(const position& a, const position& b) {
 	position out;
 	out.x = a.x+b.x;
@@ -36,7 +40,8 @@ const int NB_ADJACENCY = 4;
 double pipe_ownership(const position& pos);
 
 std::pair<Path,int> shortpath(
-	const position& target, const SPos& from);
+	const position& target, const SPos& from,
+	bool newBackbone = false);
 std::pair<Path,int> pathToPulsar(
 	const position& puls, const SPos& from);
 
@@ -45,8 +50,13 @@ bool inGrid(const position& pos);
 std::set<position> setOfVect(
 	const std::vector<position>& v);
 
-std::vector<position> liste_base_baies();
+int countActionPoints(Path pth);
 
+std::vector<position> liste_base(bool adv=false);
+position bayOfBase(position pos);
+std::vector<position> liste_base_baies(bool adv=false);
+
+int distToBase(position pos, bool adv=false);
 
 bool inGrid(const position& pos);
 bool buildable(const position& pos);
