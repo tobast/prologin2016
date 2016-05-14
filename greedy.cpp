@@ -74,11 +74,9 @@ Path bestBackboneReinforcement() {
 	}
 
 	for(auto it=chosen.begin(); it != chosen.end(); ++it) {
-		cerr << "Begin " << it->y << ' ' << it->x << endl;
 		int ennemyDist = distToBase(*it, true);
 		int selfDist = distToBase(*it);
 		pair<Path,int> nPath = shortpath(*it, bays, true);
-		cerr << "Path aquired." << endl;
 		int apUsed = countActionPoints(nPath.first);
 		double score = ((double)(
 			(selfDist - ennemyDist) *
@@ -90,7 +88,6 @@ Path bestBackboneReinforcement() {
 			bestPath = nPath.first;
 			once=false;
 		}
-		cerr << "end" << endl;
 	}
 	return bestPath;
 }
@@ -138,6 +135,42 @@ void tour() {
 		worklist.push_back(*it);
 }
 
+void repareDamage() {
+	vector<position> ldestr = hist_tuyaux_detruits();
+	if(!ldestr.empty()) {
+		position destr = ldestr.front();
+		deblayer(destr);
+		construire(destr);
+	}
+}
+
+void killItWithFire() {
+	if(points_action() < 3 || score(moi()) < CHARGE_DESTRUCTION)
+		return; // ABORT MISSION, REPEAT, ABORT MISSION
+
+	/* Determine whether we're going to fire or not.
+	This event has a different probability before and after
+	having linked every pulsar. */
+	int odds;
+	if(allLinked)
+		odds = PRE_LINK_DESTROY_PROB;
+	else
+		odds = POST_LINK_DESTROY_PROB;
+
+	if(rand() % odds > 0)
+		return;
+	
+	vector<position> bays = liste_base_baies(true);
+	vector<position> targets;
+	for(position bay : bays) {
+		if(est_simple_tuyau(bay))
+			targets.push_back(bay);
+	}
+
+	position target = targets[rand() % targets.size()];
+	detruire(target);
+}
+
 namespace greedy {
 void do_partie_init() {
 	vector<position> puls = liste_pulsars();
@@ -151,6 +184,8 @@ void do_partie_init() {
 
 void do_jouer_tour() {
 	gatherStats();
+	repareDamage();
+	killItWithFire();
 	tour();
 }
 }
