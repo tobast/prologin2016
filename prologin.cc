@@ -6,6 +6,7 @@
 #include <ctime>
 
 #include "prologin.hh"
+
 #include "naive.h"
 #include "greedy.h"
 using namespace greedy; // greedy strategy

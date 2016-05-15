@@ -175,6 +175,15 @@ position bayOfBase(position pos) {
 	return mkPos(-1,-1);
 }
 
+position baseOfBay(position pos) {
+	for(int adj=0; adj < NB_ADJACENCY; adj++) {
+		position nPos = pos + ADJACENCY[adj];
+		if(buildable(pos) && type_case(nPos) == BASE)
+			return nPos;
+	}
+	return mkPos(-1,-1);
+}
+
 std::vector<position> liste_base(bool adv) {
 	if(adv)
 		return base_ennemie();
@@ -236,5 +245,43 @@ int countActionPoints(Path pth) {
 		}
 	}
 	return ap;
+}
+
+Path connectedPipes(const position& pos) {
+	Path out;
+	for(int adj=0; adj < NB_ADJACENCY; adj++) {
+		if(est_tuyau(pos+ADJACENCY[adj]))
+			out.push_back(pos+ADJACENCY[adj]);
+	}
+	return out;
+}
+
+int manhattan(const position& p1, const position& p2) {
+	return abs(p1.x - p2.x) + abs(p1.y-p2.y);
+}
+int manhattanToBase(const position& pos, bool adv) {
+	int out = INFTY;
+	for(position bPos : liste_base(adv)) {
+		int dist = manhattan(bPos, pos);
+		out = min(out, dist);
+	}
+	return out;
+}
+position manhattanNearestBase(const position& pos, bool adv) {
+	int minOut = INFTY;
+	position opt;
+	for(position bPos : liste_base(adv)) {
+		int dist = manhattan(bPos, pos);
+		if(dist < minOut) {
+			minOut = dist;
+			opt = bPos;
+		}
+	}
+	return opt;
+}
+
+double ellapsed(clock_t from) {
+	clock_t now = clock();
+	return ((double)(now - from)) / ((double)CLOCKS_PER_SEC);
 }
 
