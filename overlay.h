@@ -3,6 +3,7 @@
 #include "prologin.hh"
 #include <vector>
 #include <set>
+#include <cmath>
 #include <queue>
 #include <utility>
 #include <iostream>
@@ -74,6 +75,7 @@ Path connectedPipes(const position& pos);
 
 int manhattan(const position& p1, const position& p2);
 int manhattanToBase(const position& pos, bool adv=false);
+double manhattanToBaseDiv(const position& pos);
 position manhattanNearestBase(const position& pos,
 	bool adv=false);
 

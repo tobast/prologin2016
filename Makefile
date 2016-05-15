@@ -14,7 +14,8 @@ champion-dists = naive.h \
 	overlay.h \
 	greedy.h \
 	stats.h \
-	constants.h
+	constants.h \
+	README
 champion-cxxflags = -ggdb3 -Wall -Wextra -std=c++11
 
 # Evite de toucher a ce qui suit

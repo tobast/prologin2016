@@ -27,17 +27,23 @@ double pipe_ownership(const position& pos) {
 }
 	
 
-int posCost(const position& p, bool backboneMode) {
+int realPosCost(const position& p, bool backboneMode) {
 	switch(type_case(p)) {
-		case VIDE: return (backboneMode)?0:1;
-		case TUYAU: return 0;
-		case SUPER_TUYAU: return 0;
-		case DEBRIS: return 2;
+		case VIDE: return (backboneMode)?0:2;
+		case TUYAU: return 1;
+		case SUPER_TUYAU: return 1;
+		case DEBRIS: return 4;
 		case PULSAR: 
 		case BASE:
 		case INTERDIT: return INFTY;
 	}
 	return INFTY;
+}
+int posCost(const position& p, bool backboneMode) {
+/*	return log(((double)manhattanToBase(p,true))/
+		((double)manhattanToBase(p,false))+1.0001) *
+		10. * realPosCost(p, backboneMode); */
+	return realPosCost(p, backboneMode);
 }
 
 position addAdj(const position& p, int i) {
@@ -266,6 +272,10 @@ int manhattanToBase(const position& pos, bool adv) {
 		out = min(out, dist);
 	}
 	return out;
+}
+double manhattanToBaseDiv(const position& pos) {
+	return ((double)manhattanToBase(pos,false)) /
+		((double)manhattanToBase(pos,true));
 }
 position manhattanNearestBase(const position& pos, bool adv) {
 	int minOut = INFTY;

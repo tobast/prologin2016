@@ -22,6 +22,9 @@ int _max(int a, int b) {
 double avgPlasma(position pos, int turns) {
 	vector<int>& transit = cellStats[pos.y][pos.x].
 		plasmaTransited;
+
+	if(transit.size() == 0)
+		return 0;
 	double sum = 0;
 	int num = 0;
 

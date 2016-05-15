@@ -9,8 +9,7 @@ struct Pulsar {
 
 vector<Pulsar> pulsars;
 
-
-
+/** Liste des tuyaux auxquels il est intéressant de se brancher */
 vector<position> possiblePlugs() {
 	vector<position> pipes = liste_tuyaux();
 	vector<position> out = liste_base_baies();
@@ -24,16 +23,16 @@ vector<position> possiblePlugs() {
 	return out;
 }
 
-int vraiesPulsRestantes(const pulsar_info& p) {
-	int toursRest = NB_TOURS/2 - tour_actuel();
-
-	return min(toursRest / p.periode,
-		p.pulsations_restantes);
+/** Tours d'activité restants pour un pulsar */
+int activityTurns(const pulsar_info& infos) {
+	return (infos.pulsations_restantes - 1) * infos.periode;
 }
 
+int cellDistToPipe[TAILLE_TERRAIN][TAILLE_TERRAIN];
+/** Donne un score à un pulsar pour le greedy */
 double scorePulsar(const Pulsar& puls) {
 	if(puls.linked)
-		return 0;
+		return -1;
 	position pos = puls.pos;
 	if(!est_pulsar(pos))
 		return -1;
@@ -41,15 +40,23 @@ double scorePulsar(const Pulsar& puls) {
 	if(infos.pulsations_restantes == 0)
 		return -1;
 	double emitScore = sq(infos.puissance /
-		((double)infos.periode)) * 
-		(NB_TOURS/2 + 1 - tour_actuel() -
-			vraiesPulsRestantes(infos) * infos.periode);
+		((double)infos.periode)) * infos.pulsations_restantes;
+	//	(NB_TOURS + 1 - tour_actuel() -
+	//		activityTurns(infos));
 	
+	/*
 	vector<position> plugs = possiblePlugs();
 	pair<Path,int> pth = pathToPulsar(pos,
 		setOfVect(plugs));
+	double distScore = pth.second;
+	*/
+	double distScore = cellDistToPipe[pos.y][pos.x];
+	if(manhattanToBase(pos) > manhattanToBase(pos,true))
+		distScore *= sqrt(manhattanToBase(pos)-
+			manhattanToBase(pos,true) + 1) / 4.;
+		//manhattanToBase(pos);
 
-	return emitScore / ((double)pth.second);
+	return emitScore / distScore;
 }
 
 bool orderPulsar(const Pulsar& p1, const Pulsar& p2) {
@@ -62,19 +69,22 @@ Path worklist, shadowWorkList;
 Path reinforcements;
 queue<position> aspiUp;
 vector<position> usedBases;
+SPos selectedBackbone;
+Path allBackbones;
 
 bool allLinked=false;
 int doubledBackbones = 0;
 
 
+/** Ajoute un second plug à une backbone, le but étant de
+	rendre inefficaces les IA tirant à la base de la backbone
+	(contre la base) */
 Path doubleBayPlugs(const Path& path, bool reinf=false);
 Path doubleBayPlugs(const Path& path, bool reinf) {
 	Path out;
 	auto endIt = path.end();
 	for(auto it=path.begin(); it != endIt; ++it) {
 		if(baseOfBay(*it).x >= 0) { // est une base
-			if(reinf)
-				reinforcements.push_back(*it);
 			aspiUp.push(baseOfBay(*it));
 			usedBases.push_back(baseOfBay(*it));
 			for(int adj=0; adj < NB_ADJACENCY; adj++) {
@@ -82,8 +92,6 @@ Path doubleBayPlugs(const Path& path, bool reinf) {
 				if(baseOfBay(nPos).x >= 0) {
 					out.push_back(nPos);
 					usedBases.push_back(baseOfBay(nPos));
-					if(reinf)
-						reinforcements.push_back(nPos);
 					for(int i=0; i < NB_ADJACENCY; i++) {
 						if(type_case(nPos+ADJACENCY[i]) == BASE) {
 							out.push_back(nPos+
@@ -106,18 +114,33 @@ Path doubleBayPlugs(const Path& path, bool reinf) {
 	return out;
 }
 
+/** Doubler une section droite de tuyau - utilisé sur les
+backbones */
 void doubleLinearSection(position pos, Path& out, int dir=-1,
 	int side=-1);
 void doubleLinearSection(position pos, Path& out,  int dir,
 		int side) {
 	if(dir < 0) {
 		Path connected = connectedPipes(pos);
-		if(connected.empty() || connected.size() > 2)
-			return;
-		for(int adj=0; adj < NB_ADJACENCY; adj++) {
-			if(pos+ADJACENCY[adj] == connected.front()) {
-				dir=adj;
-				break;
+		if(connected.empty() || connected.size() > 2) {
+			if(manhattanToBase(pos) <= 2) {
+				for(int cDir=0; cDir < 4; cDir++) {
+					if(manhattanToBase(pos+ADJACENCY[cDir]) <
+							manhattanToBase(pos)) {
+						dir=cDir;
+						break;
+					}
+				}
+			}
+			else			
+				return;
+		}
+		else {
+			for(int adj=0; adj < NB_ADJACENCY; adj++) {
+				if(pos+ADJACENCY[adj] == connected.front()) {
+					dir=adj;
+					break;
+				}
 			}
 		}
 
@@ -136,6 +159,7 @@ void doubleLinearSection(position pos, Path& out,  int dir,
 	}
 }
 
+/** Prend trop longtemps. */
 /*
 Path bestBackboneReinforcement() {
 	vector<position> pipes = liste_tuyaux();
@@ -170,9 +194,35 @@ Path bestBackboneReinforcement() {
 }
 */
 
+/* Ordre de distance de manhattan à la base */
 bool orderByManhattan(const position& p1, const position& p2) {
+	if(selectedBackbone.find(p1) != selectedBackbone.end())
+		return false;
 	return manhattanToBase(p1) < manhattanToBase(p2);
 }
+
+/** distance aux backbones déjà posées */
+double distToPrevBackbones(const position& p) {
+	double dst=0;
+	for(position prevBack : selectedBackbone) {
+		dst += manhattan(prevBack, p);
+	}
+	return dst / ((double)selectedBackbone.size());
+}
+
+/** ordre (cf ^) */
+double cheapBackboneWeight(const position& p) {
+
+	return distToPrevBackbones(p) / sq(avgPlasma(p)+0.01);
+}
+
+bool orderByCheapBackbone(const position& p1,
+	const position& p2)
+{
+	return cheapBackboneWeight(p1) < cheapBackboneWeight(p2);
+}
+/** Fonction d'évaluation de l'utilité d'un renforcement
+coûteuse */
 double costyReinf(const position& p) {
 	position targetBase = manhattanNearestBase(p);
 	int enemyDist = manhattanToBase(p, true);
@@ -181,42 +231,102 @@ double costyReinf(const position& p) {
 	for(position bPos : usedBases)
 		distToOwnedBase = min(distToOwnedBase,
 			manhattan(bPos, targetBase));
+	int minDistToBackbone = INFTY;
+	for(position pos : allBackbones)
+		minDistToBackbone = min(minDistToBackbone,
+			manhattan(pos, p));
 	double ownership = pipe_ownership(p);
 
-	return ((double)distToOwnedBase) * (1. - ownership) *
-		log(((double)enemyDist) / ((double)selfDist) + 1.01);
+	if(minDistToBackbone < 5)
+		return sq((double)INFTY);
+
+	return ((double)distToOwnedBase) * (1.0001 - ownership)
+		/ pow(distToPrevBackbones(p),2)
+		* log(((double)enemyDist) / ((double)selfDist) + 1.01)
+		/ (avgPlasma(p)+0.01);
 }
 
+/** Trouve une backbone à poser */
 Path bestBackboneReinforcement() {
 	vector<position> pipes = liste_tuyaux();
-	sort(pipes.begin(), pipes.end(), orderByManhattan);
+	sort(pipes.begin(), pipes.end(), orderByCheapBackbone);
 
-	int optId=-1;
-	double optScore = -1;
-	for(int pos=0; pos < min(100,(int)pipes.size()); pos++) {
+	int optId=0;
+	double optScore = costyReinf(pipes[0]);
+	for(int pos=1; pos < min(100,(int)pipes.size()); pos++) {
 		double score = costyReinf(pipes[pos]);
-		if(score > optScore) {
+
+		if(score < optScore) {
 			optScore = score;
 			optId = pos;
 		}
 	}
 
+	selectedBackbone.insert(pipes[optId]);
+
 	SPos bays = setOfVect(liste_base_baies());
 	Path bestPath = shortpath(pipes[optId], bays, true).first;
 	bestPath = doubleBayPlugs(bestPath, true);
+
+	copy(bestPath.begin(), bestPath.end(),
+		std::back_inserter(allBackbones));
+
 	return bestPath;
 }
 
+struct BfsElem {
+	BfsElem() {}
+	BfsElem(position pos, int dist) : pos(pos),dist(dist) {}
+	position pos;
+	int dist;
+};
+
+/** Remplit une grille de distance de chaque case aux pipes plus
+proches (manhattan) de moi que de l'adversaire */
+void fillDistsFromMyPipes(
+		int dists[TAILLE_TERRAIN][TAILLE_TERRAIN])
+{
+	queue<BfsElem> process;
+	vector<position> pipes = liste_tuyaux();
+	for(position pipe : pipes) {
+		if(manhattanToBase(pipe,false) <
+				manhattanToBase(pipe,true))
+			process.push(BfsElem(pipe, 0));
+	}
+	for(position p : liste_base_baies())
+		process.push(BfsElem(p,0));
+
+	for(int row=0; row < TAILLE_TERRAIN; row++)
+		for(int col=0; col < TAILLE_TERRAIN; col++)
+			dists[row][col] = -1;
+	
+	while(!process.empty()) {
+		BfsElem cElt = process.front();
+		process.pop();
+		position& cPos = cElt.pos;
+		if(!(inGrid(cPos)) || dists[cPos.y][cPos.x] >= 0)
+			continue;
+		dists[cPos.y][cPos.x] = cElt.dist;
+
+		for(int adj=0; adj < NB_ADJACENCY; adj++) {
+			position nPos = cPos + ADJACENCY[adj];
+			process.push(BfsElem(nPos, cElt.dist+1));
+		}
+	}
+}
+
+/** Évaluation d'une position sur laquelle tirer */
 double rankFiringPos(const position& pos, int aspi,
 		const position& prev)
 {
-	double score = ((double)sq(aspi+1)) * avgPlasma(pos) *
+	double score = ((double)sq(aspi+1)) * avgPlasma(pos, 2) *
 		(sqrt(charges_presentes(prev)) + 1.);
 	if(est_super_tuyau(pos))
 		score /= 100.;
 	return score;
 }
 
+/** Dfs sur une backbone pour choisir la cible d'un tir */
 pair<position,double> followSingleBackbone(int aspi,
 		bool seen[][TAILLE_TERRAIN],
 		const position& cPos)
@@ -245,6 +355,7 @@ pair<position,double> followSingleBackbone(int aspi,
 	return nextRes;
 }
 
+/** Trouve une case sur laquelle tirer */
 position findFiringTarget() {
 	vector<position> baseCells = liste_base(true);
 
@@ -267,6 +378,8 @@ position findFiringTarget() {
 	return optPos;
 }
 
+/** Trouve un point d'aspiration non utilisé qu'on peut
+bouger */
 position findAspiPoint() {
 	for(position pos: ma_base()) {
 		if(find(usedBases.begin(), usedBases.end(), pos)
@@ -279,6 +392,7 @@ position findAspiPoint() {
 	return mkPos(-1,-1);
 }
 
+/** Réalloue un opint d'aspiration */
 void reallocAspiPoint() {
 	position aspiTakeFrom = findAspiPoint();
 	if(aspiTakeFrom.x < 0) // none available
@@ -296,7 +410,9 @@ void reallocAspiPoint() {
 	}
 }
 
+/** Trouve le pulsar suivant à viser */
 void acquireTarget() {
+	fillDistsFromMyPipes(cellDistToPipe);
 	sort(pulsars.begin(), pulsars.end(), orderPulsar);
 	targetPuls = pulsars.back();
 	if(pulsars.back().linked || scorePulsar(pulsars.back()) < 0)
@@ -312,6 +428,37 @@ void acquireTarget() {
 	worklist = out;
 }
 
+/** Score pour placer un superpipe selon la position */
+double distanceScoreSPipes(const position& p1) {
+	if(manhattanToBase(p1) < manhattanToBase(p1,true))
+		return manhattanToBase(p1);
+	return 3*manhattanToBase(p1);
+}
+
+bool supPipesSorter(const position& p1, const position& p2) {
+	if(est_super_tuyau(p1))
+		return false;
+	return avgPlasma(p1) * distanceScoreSPipes(p1) <
+		avgPlasma(p2) * distanceScoreSPipes(p2);
+}
+
+/** Utilisé quand il reste des points qu'on ne sait pas dépenser */
+void makeSuperPipe(int num) {
+	Path pipes = liste_tuyaux();
+	sort(pipes.begin(), pipes.end(), supPipesSorter);
+
+	if(num > (int)pipes.size()) {
+		cerr << "Not enough pipes to keep me busy..." << endl;
+		return;
+	}
+
+	for(int pos=0; pos < num; pos++)
+		ameliorer(pipes[pos]);
+}
+
+
+int nbPulsarsInRow = 0;
+/** Joue un tour de jeu */
 void tour() {
 #ifdef PROFILING
 	clock_t stClock;
@@ -326,18 +473,43 @@ void tour() {
 	cerr << "reallocAspi " << ellapsed(stClock) << endl;
 #endif
 
+	int didNothing = -1; // On ne "fait rien" au premier tour
+	int lastAP = points_action();
+	bool tryingBackbone = false;
+
 	while(points_action() > 0) {
+
+		// On n'a rien fait au tour de boucle précédent --
+		// infinite loop?!
+		if(lastAP == points_action())
+			didNothing++;
+		lastAP = points_action();
+
+		if(didNothing > 12 && tryingBackbone) {
+			// We took no action 8 times.
+			cerr << "Fallback super pipe" << endl;
+			makeSuperPipe(lastAP);
+			break;
+		}
+
+		if(shadowWorkList.empty() && info_pulsar(
+				targetPuls.pos).pulsations_restantes == 0) {
+			worklist.clear();
+		}
 		if(worklist.empty() && reinforcements.empty() &&
 				stacked.empty()) {
 			if(!shadowWorkList.empty()) {
 				worklist = shadowWorkList;
 				shadowWorkList.clear();
 			}
-			else if(allLinked) {
+			else if(allLinked ||
+					nbPulsarsInRow >= MAX_PULSARS_IN_ROW) {
 #ifdef PROFILING
 				stClock = clock();
 #endif
 				worklist = bestBackboneReinforcement();
+				tryingBackbone = true;
+				nbPulsarsInRow = 0;
 #ifdef PROFILING
 			cerr << "bBkbReinf " << ellapsed(stClock) << endl;
 #endif
@@ -347,6 +519,9 @@ void tour() {
 				stClock = clock();
 #endif
 				acquireTarget();
+				tryingBackbone = false;
+				didNothing = 0;
+				nbPulsarsInRow++;
 #ifdef PROFILING
 			cerr << "acqTarget" << ellapsed(stClock) << endl;
 #endif
@@ -381,6 +556,7 @@ void tour() {
 		worklist.push_back(*it);
 }
 
+/** Répare les dégâts des tirs de l'ennemi */
 void repareDamage() {
 	vector<position> ldestr = hist_tuyaux_detruits();
 	if(!ldestr.empty()) {
@@ -399,6 +575,7 @@ void repareDamage() {
 	}
 }
 
+/** Tire sur une cible */
 void killItWithFire() {
 	if(points_action() < 3 || score(moi()) < CHARGE_DESTRUCTION)
 		return; // ABORT MISSION, REPEAT, ABORT MISSION
@@ -434,21 +611,25 @@ void do_jouer_tour() {
 #ifdef PROFILING
 	clock_t cl = clock();
 #endif
+	// On met à jour les stats
 	gatherStats();
 #ifdef PROFILING
 	cerr << "gatherStats " << ellapsed(cl) << endl;
 	cl = clock();
 #endif
+	// Répare les dégâts
 	repareDamage();
 #ifdef PROFILING
 	cerr << "repareDmg " << ellapsed(cl) << endl;
 	cl = clock();
 #endif
+	// Tire sur l'ennemi (possiblement) (random)
 	killItWithFire();
 #ifdef PROFILING
 	cerr << "killItWithFire " << ellapsed(cl) << endl;
 	cl = clock();
 #endif
+	// Joue vraiment.
 	tour();
 #ifdef PROFILING
 	cerr << "tour " << ellapsed(cl) << endl;
