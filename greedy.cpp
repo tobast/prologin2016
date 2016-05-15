@@ -74,13 +74,13 @@ Path bestBackboneReinforcement() {
 	}
 
 	for(auto it=chosen.begin(); it != chosen.end(); ++it) {
-		int ennemyDist = distToBase(*it, true);
+		int enemyDist = distToBase(*it, true);
 		int selfDist = distToBase(*it);
 		pair<Path,int> nPath = shortpath(*it, bays, true);
 		int apUsed = countActionPoints(nPath.first);
 		double score = ((double)(
-			(selfDist - ennemyDist) *
-			(ennemyDist - nPath.second))) /
+			(selfDist - enemyDist) *
+			(enemyDist - nPath.second))) /
 			((double)apUsed);
 
 		if(once || score > bestScore) {
@@ -90,6 +90,66 @@ Path bestBackboneReinforcement() {
 		}
 	}
 	return bestPath;
+}
+
+double rankFiringPos(const position& pos, int aspi,
+		const position& prev)
+{
+	double score = ((double)sq(aspi+1)) * avgPlasma(pos) *
+		(sqrt(charges_presentes(prev)) + 1.);
+	if(est_super_tuyau(pos))
+		score /= 100.;
+	return score;
+}
+
+pair<position,double> followSingleBackbone(int aspi,
+		bool seen[][TAILLE_TERRAIN],
+		const position& cPos)
+{
+	vector<position> adjPipes;
+	for(int adj=0; adj < NB_ADJACENCY; adj++) {
+		position nPos = cPos + ADJACENCY[adj];
+		if(inGrid(nPos) && est_tuyau(nPos) &&
+				!seen[nPos.y][nPos.x])
+			adjPipes.push_back(nPos);
+	}
+
+	seen[cPos.y][cPos.x] = true;
+
+	if(adjPipes.size() != 1)
+		return make_pair(mkPos(-1,-1), -INFTY);
+	
+	pair<position,double> nextRes =
+		followSingleBackbone(aspi, seen, adjPipes.front());
+
+	double selfRank = rankFiringPos(cPos, aspi,
+		adjPipes.front());
+
+	if(selfRank > nextRes.second)
+		return make_pair(cPos,selfRank);
+	return nextRes;
+}
+
+position findFiringTarget() {
+	vector<position> baseCells = liste_base(true);
+
+	bool seen[TAILLE_TERRAIN][TAILLE_TERRAIN];
+	for(int row=0;row < TAILLE_TERRAIN; row++)
+		for(int col=0;col < TAILLE_TERRAIN; col++)
+			seen[row][col]=false;
+
+	position optPos = mkPos(-1,-1);
+	double bestScore = -2*INFTY;
+	for(position cell : baseCells) {
+		int aspi = puissance_aspiration(cell);
+		pair<position, double> backboneOpti =
+			followSingleBackbone(aspi, seen, bayOfBase(cell));
+		if(backboneOpti.second > bestScore) {
+			optPos = backboneOpti.first;
+			bestScore = backboneOpti.second;
+		}
+	}
+	return optPos;
 }
 
 void acquireTarget() {
@@ -160,6 +220,7 @@ void killItWithFire() {
 	if(rand() % odds > 0)
 		return;
 	
+	/*
 	vector<position> bays = liste_base_baies(true);
 	vector<position> targets;
 	for(position bay : bays) {
@@ -167,7 +228,8 @@ void killItWithFire() {
 			targets.push_back(bay);
 	}
 
-	position target = targets[rand() % targets.size()];
+	position target = targets[rand() % targets.size()]; */
+	position target = findFiringTarget();
 	detruire(target);
 }
 
